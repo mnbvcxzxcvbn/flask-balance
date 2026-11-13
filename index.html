@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>フラスコバランス</title>
+<meta name="description" content="スマホを傾けてトレーを傾け、フラスコを守れ。倒れたら割れる。ときどき風が吹く。">
+<meta property="og:title" content="フラスコバランス">
+<meta property="og:description" content="スマホを傾けてトレーを傾け、フラスコを守れ。倒れたら割れる。ときどき風が吹く。">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="フラスコバランス">
+<meta name="twitter:description" content="スマホを傾けてトレーを傾け、フラスコを守れ。倒れたら割れる。">
+<meta name="theme-color" content="#0f1d24">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=M+PLUS+1+Code:wght@400;700&display=swap">
+<style>
+  /* Layout: one full-screen lab bench canvas, HUD pinned top, modal card centered. Single dark "night lab" look. */
+  :root {
+    --bench: #0f1d24;
+    --bench-2: #16303a;
+    --tile: #1d3d48;
+    --glass: #d9f3f5;
+    --liquid: #39e0b4;
+    --warn: #ffb23e;
+    --danger: #ff5a6a;
+    --ink: #eaf7f6;
+    --ink-dim: #8fb3b6;
+    --font-display: "DotGothic16", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+    --font-ui: "M PLUS 1 Code", "Hiragino Kaku Gothic ProN", "Yu Gothic", ui-monospace, monospace;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bench);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    overflow: hidden;
+    touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  [hidden] { display: none !important; }
+
+  .hud {
+    position: fixed; top: 0; left: 0; right: 0;
+    padding: calc(env(safe-area-inset-top, 0px) + 12px) max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px));
+    display: flex; justify-content: space-between; align-items: flex-start;
+    pointer-events: none;
+  }
+  .hud .label { font-size: 11px; letter-spacing: .12em; color: var(--ink-dim); }
+  .hud .time { font-family: var(--font-display); font-size: 40px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .hud .time small { font-size: 18px; color: var(--ink-dim); margin-left: 2px; }
+  .hud .right { text-align: right; display: grid; gap: 6px; }
+  .hud .v { font-family: var(--font-display); font-size: 20px; font-variant-numeric: tabular-nums; }
+  .hud .meters { margin-top: 8px; font-size: 12px; color: var(--ink-dim); font-variant-numeric: tabular-nums; display: grid; gap: 2px; }
+  .hud .meters b { color: var(--ink); font-weight: 400; }
+  .hud .meters .gust b { color: var(--warn); }
+
+  .wind-alert {
+    position: fixed; left: 50%; top: 22%; transform: translateX(-50%);
+    font-family: var(--font-display); font-size: 30px; color: var(--warn);
+    text-shadow: 0 0 18px rgba(255,178,62,.5);
+    pointer-events: none; white-space: nowrap;
+    animation: blink .25s steps(2) infinite;
+  }
+  @keyframes blink { 50% { opacity: .35; } }
+
+  .modal {
+    position: fixed; inset: 0;
+    display: grid; place-items: center;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    background: rgba(8, 18, 22, .55);
+  }
+  .card {
+    width: min(360px, 100%);
+    background: var(--bench-2);
+    border: 2px solid var(--tile);
+    border-radius: 6px;
+    padding: 24px 20px 20px;
+    display: grid; gap: 14px;
+    text-align: center;
+  }
+  .card h1, .card h2 { font-family: var(--font-display); font-weight: 400; margin: 0; text-wrap: balance; }
+  .card h1 { font-size: 34px; letter-spacing: .04em; }
+  .card h2 { font-size: 28px; color: var(--danger); }
+  .card p { margin: 0; font-size: 13px; line-height: 1.7; color: var(--ink-dim); }
+  .card .big { font-family: var(--font-display); font-size: 52px; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .card .big small { font-size: 20px; color: var(--ink-dim); }
+  .card .note { font-size: 12px; color: var(--warn); min-height: 1em; }
+  .rule { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; text-align: left; font-size: 13px; color: var(--ink); }
+  .rule b { color: var(--liquid); font-weight: 700; }
+  .btns { display: grid; gap: 10px; }
+  button {
+    font-family: var(--font-ui); font-weight: 700; font-size: 16px;
+    border-radius: 4px; border: 2px solid var(--liquid);
+    padding: 13px 16px; cursor: pointer;
+    background: var(--liquid); color: #062019;
+  }
+  button.ghost { background: transparent; color: var(--ink); border-color: var(--tile); }
+  button:focus-visible { outline: 3px solid var(--warn); outline-offset: 2px; }
+  button:active { transform: translateY(1px); }
+  .ctl-hint {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    padding: 0 16px calc(env(safe-area-inset-bottom, 0px) + 14px);
+    text-align: center; font-size: 12px; color: var(--ink-dim); pointer-events: none;
+  }
+  .err { position: fixed; inset: auto 16px 16px; color: var(--danger); font-size: 13px; text-align: center; }
+  @media (prefers-reduced-motion: reduce) { .wind-alert { animation: none; } }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<div class="hud" id="hud">
+  <div>
+    <div class="label">TIME</div>
+    <div class="time" id="time">0.00<small>秒</small></div>
+    <div class="meters">
+      <div>トレー <b id="tiltM">0.0°</b></div>
+      <div id="windRow">風速 <b id="windM">0.0 m/s</b></div>
+    </div>
+  </div>
+  <div class="right">
+    <div>
+      <div class="label">BEST</div>
+      <div class="v" id="best">--</div>
+    </div>
+  </div>
+</div>
+
+<div class="wind-alert" id="windAlert" hidden></div>
+<div class="ctl-hint" id="ctlHint" hidden></div>
+
+<div class="modal" id="startModal">
+  <div class="card">
+    <h1>フラスコバランス</h1>
+    <p>スマホを傾けると、トレーが同じように傾く。それだけ。フラスコは物理法則に従って滑り、傾き、倒れる。</p>
+    <div class="rule">
+      <span>📱</span><span>スマホの傾き ＝ <b>トレーの傾き</b></span>
+      <span>💨</span><span>ときどき<b>風</b>が吹く。風上へ傾けて耐えろ</span>
+      <span>⚠️</span><span>傾けすぎると<b>滑り落ちる</b>。倒れても落ちても割れる</span>
+    </div>
+    <div class="btns">
+      <button id="startBtn" type="button">スタート</button>
+    </div>
+    <p class="note" id="startNote"></p>
+  </div>
+</div>
+
+<div class="modal" id="overModal" hidden>
+  <div class="card">
+    <h2 id="overTitle">ガシャーン！</h2>
+    <div class="big" id="finalTime">0.00<small>秒</small></div>
+    <p id="finalMsg"></p>
+    <div class="btns">
+      <button id="shareBtn" type="button">X でシェア</button>
+      <button id="retryBtn" class="ghost" type="button">もう一回</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/planck@1.0.6/dist/planck.min.js"></script>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  if (typeof planck === 'undefined') {
+    const e = document.createElement('div'); e.className = 'err';
+    e.textContent = '物理エンジンを読み込めませんでした。通信状況を確認して再読み込みしてください。';
+    document.body.appendChild(e);
+    return;
+  }
+  const pl = planck, Vec2 = pl.Vec2;
+  const cv = $('cv');
+  const ctx = cv.getContext('2d');
+  const timeEl = $('time'), bestEl = $('best'), windAlert = $('windAlert'), ctlHint = $('ctlHint');
+  const tiltM = $('tiltM'), windM = $('windM'), windRow = $('windRow');
+  const startModal = $('startModal'), overModal = $('overModal');
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---------- world constants (1 unit = 1 dm = 10 cm) ----------
+  const G = 98;                 // 9.8 m/s² in dm/s²
+  const TRAY_HW = 1.6, TRAY_HH = 0.06;   // tray 32 cm wide
+  const GROUND_Y = -2.4;        // bench 24 cm below the tray pivot
+  const MAX_TILT = 0.6;         // ±34°
+  const MAX_TILT_SPEED = 2.6;   // rad/s, how fast the tray can follow the phone
+  const FLASK_H = 1.4;          // 14 cm Erlenmeyer flask
+  const MU_GLASS = 0.55;
+
+  // flask outline in local coords (dm, y up). Origin = base center.
+  const BASE = 0.4, SHOULDER_Y = 0.8, NECK = 0.13, LIQ_Y = 0.45;
+  const halfAt = y => BASE - (BASE - NECK) * (y / SHOULDER_Y);
+  const LOWER = [Vec2(-0.37, 0), Vec2(0.37, 0), Vec2(0.4, 0.035), Vec2(halfAt(LIQ_Y), LIQ_Y), Vec2(-halfAt(LIQ_Y), LIQ_Y), Vec2(-0.4, 0.035)];
+  const UPPER = [Vec2(-halfAt(LIQ_Y), LIQ_Y), Vec2(halfAt(LIQ_Y), LIQ_Y), Vec2(NECK, SHOULDER_Y), Vec2(-NECK, SHOULDER_Y)];
+
+  // ---------- canvas ----------
+  let W = 0, H = 0, DPR = 1, PX = 100, CX = 0, CY = 0, GROUND_PX = 0;
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    PX = Math.min(W * 0.68 / (TRAY_HW * 2), H * 0.19);
+    GROUND_PX = H - Math.max(56, H * 0.1);
+    CX = W / 2;
+    CY = GROUND_PX + GROUND_Y * PX;
+  }
+  addEventListener('resize', resize); resize();
+  const sx = x => CX + x * PX, sy = y => CY - y * PX;
+
+  // ---------- storage ----------
+  const BEST_KEY = 'flask-balance-best-v2';
+  let best = 0;
+  try { best = parseFloat(localStorage.getItem(BEST_KEY)) || 0; } catch (e) {}
+  const showBest = () => { bestEl.textContent = best > 0 ? best.toFixed(2) + '秒' : '--'; };
+  showBest();
+
+  // ---------- input: only sets the tray's target angle ----------
+  // floorTarget: + = right side of the tray goes down (same as the phone)
+  let floorTarget = 0;
+  let gyroOK = false, gyroSeen = false, gyroZero = null;
+  let keyL = false, keyR = false, pointerActive = false;
+
+  function screenAngle() {
+    if (screen.orientation && typeof screen.orientation.angle === 'number') return screen.orientation.angle;
+    return typeof window.orientation === 'number' ? window.orientation : 0;
+  }
+  function onOrient(e) {
+    if (e.gamma == null && e.beta == null) return;
+    const a = ((screenAngle() % 360) + 360) % 360;
+    let roll; // degrees, + = right side of screen goes down
+    if (a === 90) roll = -e.beta;
+    else if (a === 270) roll = e.beta;
+    else if (a === 180) roll = -e.gamma;
+    else roll = e.gamma;
+    if (gyroZero === null) gyroZero = roll;
+    gyroSeen = true;
+    if (!pointerActive && !keyL && !keyR) {
+      floorTarget = clamp((roll - gyroZero) * Math.PI / 180, -MAX_TILT, MAX_TILT);
+    }
+  }
+  async function enableGyro() {
+    try {
+      if (typeof DeviceOrientationEvent === 'undefined') return false;
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const r = await DeviceOrientationEvent.requestPermission();
+        if (r !== 'granted') return false;
+      }
+      addEventListener('deviceorientation', onOrient);
+      gyroOK = true;
+      return true;
+    } catch (e) { return false; }
+  }
+  addEventListener('keydown', e => {
+    if (e.key === 'ArrowLeft' || e.key === 'a') keyL = true;
+    if (e.key === 'ArrowRight' || e.key === 'd') keyR = true;
+  });
+  addEventListener('keyup', e => {
+    if (e.key === 'ArrowLeft' || e.key === 'a') keyL = false;
+    if (e.key === 'ArrowRight' || e.key === 'd') keyR = false;
+  });
+  cv.addEventListener('pointerdown', e => { pointerActive = true; pointerTilt(e); });
+  addEventListener('pointermove', e => { if (pointerActive) pointerTilt(e); });
+  addEventListener('pointerup', () => { pointerActive = false; });
+  addEventListener('pointercancel', () => { pointerActive = false; });
+  function pointerTilt(e) {
+    floorTarget = clamp((e.clientX - W / 2) / (W * 0.4), -1, 1) * MAX_TILT;
+  }
+
+  // ---------- audio ----------
+  let ac = null, windGain = null;
+  function initAudio() {
+    if (ac) return;
+    try {
+      ac = new (window.AudioContext || window.webkitAudioContext)();
+      const buf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      const src = ac.createBufferSource(); src.buffer = buf; src.loop = true;
+      const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 500; bp.Q.value = 0.6;
+      windGain = ac.createGain(); windGain.gain.value = 0;
+      src.connect(bp); bp.connect(windGain); windGain.connect(ac.destination);
+      src.start();
+    } catch (e) { ac = null; }
+  }
+  function setWindSound(v) {
+    if (!ac || !windGain) return;
+    windGain.gain.setTargetAtTime(v * 0.35, ac.currentTime, 0.08);
+  }
+  function crashSound() {
+    if (!ac) return;
+    const t = ac.currentTime;
+    const len = Math.floor(ac.sampleRate * 0.8);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+    const n = ac.createBufferSource(); n.buffer = buf;
+    const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1800;
+    const g = ac.createGain(); g.gain.value = 0.9;
+    n.connect(hp); hp.connect(g); g.connect(ac.destination); n.start(t);
+    for (let i = 0; i < 9; i++) {
+      const o = ac.createOscillator(); const og = ac.createGain();
+      o.type = 'sine'; o.frequency.value = 2500 + Math.random() * 4500;
+      const st = t + Math.random() * 0.5;
+      og.gain.setValueAtTime(0, st);
+      og.gain.linearRampToValueAtTime(0.12, st + 0.005);
+      og.gain.exponentialRampToValueAtTime(0.0001, st + 0.25 + Math.random() * 0.3);
+      o.connect(og); og.connect(ac.destination); o.start(st); o.stop(st + 0.7);
+    }
+  }
+
+  // ---------- physics world ----------
+  let world, tray, ground, flask;
+  let pendingBreak = null;
+  const S = { phase: 'title', t: 0, wind: 0, windDir: 0, windStrength: 0, nextGust: 4, gustEnd: 0,
+    pendingDir: 1, warned: false, slosh: 0, sloshV: 0, lastW: 0, puddle: 0, puddleX: 0, shake: 0,
+    streaks: [], lastScore: 0, cause: '' };
+
+  function buildWorld() {
+    world = new pl.World({ gravity: Vec2(0, -G) });
+    ground = world.createBody({ userData: { kind: 'ground' } });
+    ground.createFixture(pl.Edge(Vec2(-40, GROUND_Y), Vec2(40, GROUND_Y)), { friction: 0.8 });
+
+    tray = world.createBody({ type: 'kinematic', position: Vec2(0, 0), userData: { kind: 'tray' } });
+    tray.createFixture(pl.Box(TRAY_HW, TRAY_HH), { friction: MU_GLASS });
+
+    flask = world.createBody({ type: 'dynamic', position: Vec2(0, TRAY_HH + 0.005), userData: { kind: 'flask' } });
+    // lower part holds the liquid: much denser than the glass-only upper parts
+    flask.createFixture(pl.Polygon(LOWER), { density: 1.0, friction: MU_GLASS, restitution: 0.05 });
+    flask.createFixture(pl.Polygon(UPPER), { density: 0.12, friction: MU_GLASS, restitution: 0.05 });
+    flask.createFixture(pl.Box(NECK, (FLASK_H - SHOULDER_Y) / 2, Vec2(0, (FLASK_H + SHOULDER_Y) / 2), 0), { density: 0.12, friction: MU_GLASS });
+
+    world.on('begin-contact', c => {
+      const a = c.getFixtureA().getBody(), b = c.getFixtureB().getBody();
+      const ka = a.getUserData() && a.getUserData().kind, kb = b.getUserData() && b.getUserData().kind;
+      if ((ka === 'flask' && kb === 'ground') || (kb === 'flask' && ka === 'ground')) pendingBreak = 'drop';
+      for (const [x, k] of [[a, kb], [b, ka]]) {
+        const u = x.getUserData();
+        if (u && u.kind === 'drop' && (k === 'ground' || k === 'tray') && !u.landed) {
+          u.landed = performance.now();
+          if (k === 'ground') { S.puddle = Math.min(S.puddle + 0.03, 1); }
+        }
+      }
+    });
+  }
+
+  function reset() {
+    buildWorld();
+    pendingBreak = null;
+    Object.assign(S, { t: 0, wind: 0, windDir: 0, windStrength: 0, nextGust: 3.5 + Math.random() * 2,
+      gustEnd: 0, warned: false, slosh: 0, sloshV: 0, lastW: 0, puddle: 0, shake: 0, streaks: [], cause: '' });
+    windAlert.hidden = true;
+    gyroZero = null;
+    floorTarget = 0;
+  }
+
+  // ---------- simulation step ----------
+  const DT = 1 / 120;
+  function physicsStep() {
+    // keyboard ramps the target; nothing else touches the flask
+    if (keyL || keyR) floorTarget = clamp(floorTarget + ((keyR ? 1 : 0) - (keyL ? 1 : 0)) * 1.2 * DT, -MAX_TILT, MAX_TILT);
+    else if (!gyroSeen && !pointerActive) floorTarget *= Math.pow(0.15, DT);
+
+    // tray is a kinematic body: we only set its angular velocity, the engine moves it
+    const trayAngle = tray.getAngle();           // + = counter-clockwise = right side up
+    const want = -floorTarget;
+    tray.setAngularVelocity(clamp((want - trayAngle) * 14, -MAX_TILT_SPEED, MAX_TILT_SPEED));
+
+    if (S.phase === 'play') {
+      S.t += DT;
+      updateWind();
+      if (flask && S.wind !== 0) {
+        // wind pushes on the flask above its center, scaled to its weight
+        const f = flask.getMass() * G * S.wind;
+        flask.applyForce(Vec2(f, 0), flask.getWorldPoint(Vec2(0, 0.7)), true);
+      }
+    }
+
+    world.step(DT, 8, 3);
+
+    if (flask) {
+      // liquid slosh driven by the flask's own angular acceleration
+      const w = flask.getAngularVelocity();
+      const alpha = (w - S.lastW) / DT; S.lastW = w;
+      S.sloshV += (-70 * S.slosh - 5 * S.sloshV + alpha * 0.02) * DT;
+      S.slosh = clamp(S.slosh + S.sloshV * DT, -0.5, 0.5);
+
+      if (S.phase === 'play') {
+        const rel = flask.getAngle() - tray.getAngle();
+        if (Math.abs(rel) > 1.15) pendingBreak = 'tip';
+        if (flask.getPosition().y < GROUND_Y - 1) pendingBreak = 'drop';
+        if (pendingBreak) shatter(pendingBreak);
+      }
+    }
+  }
+
+  function updateWind() {
+    const lvl = Math.min(S.t / 70, 1);
+    if (!S.warned && S.windDir === 0 && S.t >= S.nextGust - 1.0) {
+      S.warned = true;
+      S.pendingDir = Math.random() < 0.5 ? -1 : 1;
+      windAlert.textContent = S.pendingDir > 0 ? '風 ≫≫≫' : '≪≪≪ 風';
+      windAlert.hidden = false;
+    }
+    if (S.windDir === 0 && S.t >= S.nextGust) {
+      S.windDir = S.pendingDir;
+      S.gustEnd = S.t + 1.5 + Math.random() * (1.2 + 2 * lvl);
+      // fraction of the flask's weight pushed sideways
+      S.windStrength = 0.32 + 0.55 * lvl + Math.random() * 0.15;
+      windAlert.hidden = true;
+    }
+    let target = 0;
+    if (S.windDir !== 0) {
+      if (S.t < S.gustEnd) {
+        const pulse = 0.78 + 0.22 * Math.sin(S.t * 7.3) + 0.12 * Math.sin(S.t * 19.1);
+        target = S.windDir * S.windStrength * pulse;
+      } else {
+        S.windDir = 0; S.warned = false;
+        S.nextGust = S.t + 2.5 + Math.random() * (5.5 - 2.5 * lvl);
+      }
+    }
+    S.wind += (target - S.wind) * (1 - Math.pow(0.004, DT));
+    if (Math.abs(S.wind) < 0.002 && target === 0) S.wind = 0;
+  }
+
+  function shatter(cause) {
+    S.phase = 'over';
+    S.cause = cause;
+    windAlert.hidden = true;
+    setWindSound(0);
+    const pos = flask.getPosition(), vel = flask.getLinearVelocity(), ang = flask.getAngle();
+    const center = flask.getWorldCenter();
+    const fv = Vec2(vel.x, vel.y);
+    const fb = flask;
+    const toWorld = (x, y) => fb.getWorldPoint(Vec2(x, y));
+
+    // glass shards: real bodies, they bounce and slide on the tray
+    for (let i = 0; i < 28; i++) {
+      const y = Math.random() * FLASK_H;
+      const hw = y < SHOULDER_Y ? halfAt(y) : NECK;
+      const p = toWorld((Math.random() * 2 - 1) * hw, y);
+      const sz = 0.04 + Math.random() * 0.08;
+      const a0 = Math.random() * Math.PI * 2;
+      const pts = [0, 1, 2].map(k => {
+        const a = a0 + k * 2.1 + Math.random() * 0.5;
+        const r = sz * (0.6 + Math.random() * 0.5);
+        return Vec2(Math.cos(a) * r, Math.sin(a) * r);
+      });
+      const b = world.createBody({ type: 'dynamic', position: p, angle: Math.random() * 6,
+        userData: { kind: 'shard', pts: pts.map(v => [v.x, v.y]) } });
+      b.createFixture(pl.Polygon(pts), { density: 0.6, friction: 0.4, restitution: 0.3, filterGroupIndex: -1 });
+      const out = Vec2(p.x - center.x, p.y - center.y);
+      const burst = 8 + Math.random() * 14;
+      const len = Math.hypot(out.x, out.y) || 1;
+      b.setLinearVelocity(Vec2(fv.x * 0.5 + out.x / len * burst, fv.y * 0.3 + Math.abs(out.y / len) * burst + 6));
+      b.setAngularVelocity((Math.random() - 0.5) * 30);
+    }
+    // liquid droplets
+    const liqC = toWorld(0, LIQ_Y * 0.5);
+    for (let i = 0; i < 50; i++) {
+      const b = world.createBody({ type: 'dynamic', position: Vec2(liqC.x + (Math.random() - 0.5) * 0.3, liqC.y + (Math.random() - 0.5) * 0.2),
+        userData: { kind: 'drop', r: 0.02 + Math.random() * 0.025, landed: 0 } });
+      b.createFixture(pl.Circle(0.025), { density: 1, friction: 0.9, restitution: 0, filterGroupIndex: -1 });
+      const a = Math.PI / 2 + (Math.random() - 0.5) * 2.4;
+      const sp = 6 + Math.random() * 16;
+      b.setLinearVelocity(Vec2(fv.x * 0.5 + Math.cos(a) * sp, Math.sin(a) * sp));
+    }
+    world.destroyBody(fb);
+    flask = null;
+    S.puddleX = liqC.x;
+    S.shake = reduceMotion ? 0 : 14;
+    crashSound();
+    try { navigator.vibrate && navigator.vibrate([60, 30, 120]); } catch (e) {}
+    const final = S.t;
+    const isBest = final > best;
+    if (isBest) { best = final; try { localStorage.setItem(BEST_KEY, String(best)); } catch (e) {} showBest(); }
+    setTimeout(() => showOver(final, isBest, cause), 1300);
+  }
+
+  // ---------- render ----------
+  function flaskPathPx() {
+    const p = new Path2D();
+    const k = PX, lip = NECK * 1.18;
+    p.moveTo(-lip * k, -FLASK_H * k);
+    p.lineTo(lip * k, -FLASK_H * k);
+    p.lineTo(NECK * k, -(FLASK_H - 0.05) * k);
+    p.lineTo(NECK * k, -SHOULDER_Y * k);
+    p.lineTo(0.4 * k, -0.035 * k);
+    p.quadraticCurveTo(0.41 * k, 0, 0.37 * k, 0);
+    p.lineTo(-0.37 * k, 0);
+    p.quadraticCurveTo(-0.41 * k, 0, -0.4 * k, -0.035 * k);
+    p.lineTo(-NECK * k, -SHOULDER_Y * k);
+    p.lineTo(-NECK * k, -(FLASK_H - 0.05) * k);
+    p.closePath();
+    return p;
+  }
+
+  function draw() {
+    ctx.save();
+    if (S.shake > 0.3) ctx.translate((Math.random() - 0.5) * S.shake, (Math.random() - 0.5) * S.shake);
+
+    // tiled wall
+    ctx.fillStyle = '#0f1d24'; ctx.fillRect(-20, -20, W + 40, H + 40);
+    const ts = Math.max(36, Math.min(W, H) / 9);
+    ctx.strokeStyle = 'rgba(80,140,150,0.13)'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = (W / 2) % ts; x < W; x += ts) { ctx.moveTo(x + .5, 0); ctx.lineTo(x + .5, GROUND_PX); }
+    for (let y = GROUND_PX % ts; y < GROUND_PX; y += ts) { ctx.moveTo(0, y + .5); ctx.lineTo(W, y + .5); }
+    ctx.stroke();
+
+    // bench
+    ctx.fillStyle = '#16303a'; ctx.fillRect(-20, GROUND_PX, W + 40, H);
+    ctx.fillStyle = '#244c58'; ctx.fillRect(-20, GROUND_PX, W + 40, 4);
+
+    // puddle on bench
+    if (S.puddle > 0) {
+      ctx.fillStyle = 'rgba(57,224,180,0.45)';
+      ctx.beginPath();
+      ctx.ellipse(sx(S.puddleX), GROUND_PX + 3, PX * (0.3 + S.puddle * 1.2), 3 + S.puddle * 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // stand (visual only)
+    ctx.fillStyle = '#2a5361';
+    ctx.beginPath();
+    ctx.moveTo(sx(0) - 5, sy(0)); ctx.lineTo(sx(0) + 5, sy(0));
+    ctx.lineTo(sx(0) + PX * 0.35, GROUND_PX); ctx.lineTo(sx(0) - PX * 0.35, GROUND_PX);
+    ctx.closePath(); ctx.fill();
+
+    // tray
+    if (tray) {
+      const ta = tray.getAngle();
+      ctx.save(); ctx.translate(sx(0), sy(0)); ctx.rotate(-ta);
+      ctx.fillStyle = '#b9c9cc';
+      ctx.fillRect(-TRAY_HW * PX, -TRAY_HH * PX, TRAY_HW * 2 * PX, TRAY_HH * 2 * PX);
+      ctx.fillStyle = '#e7f1f2';
+      ctx.fillRect(-TRAY_HW * PX, -TRAY_HH * PX, TRAY_HW * 2 * PX, 2);
+      // scale ticks every 5 cm
+      ctx.fillStyle = 'rgba(15,29,36,0.5)';
+      for (let x = -1.5; x <= 1.5001; x += 0.5) ctx.fillRect(x * PX - 0.5, -TRAY_HH * PX + 2, 1, TRAY_HH * PX);
+      ctx.restore();
+      ctx.fillStyle = '#ffb23e';
+      ctx.beginPath(); ctx.arc(sx(0), sy(0), 4, 0, Math.PI * 2); ctx.fill();
+    }
+
+    if (flask) drawFlask();
+
+    // shards & drops
+    const now = performance.now();
+    for (let b = world && world.getBodyList(); b; b = b.getNext()) {
+      const u = b.getUserData();
+      if (!u) continue;
+      const p = b.getPosition();
+      if (u.kind === 'shard') {
+        ctx.save(); ctx.translate(sx(p.x), sy(p.y)); ctx.rotate(-b.getAngle());
+        ctx.beginPath();
+        u.pts.forEach(([x, y], i) => i ? ctx.lineTo(x * PX, -y * PX) : ctx.moveTo(x * PX, -y * PX));
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(217,243,245,0.22)'; ctx.fill();
+        ctx.strokeStyle = 'rgba(217,243,245,0.9)'; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.restore();
+      } else if (u.kind === 'drop') {
+        const age = u.landed ? (now - u.landed) / 1500 : 0;
+        if (age >= 1) continue;
+        ctx.fillStyle = `rgba(57,224,180,${1 - age})`;
+        ctx.beginPath(); ctx.arc(sx(p.x), sy(p.y), u.r * PX, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+
+    // wind streaks
+    ctx.lineCap = 'round';
+    for (const s of S.streaks) {
+      ctx.strokeStyle = `rgba(234,247,246,${s.a})`; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.x - Math.sign(s.v) * s.len, s.y); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawFlask() {
+    const p = flask.getPosition(), a = flask.getAngle();
+    const path = flaskPathPx();
+    ctx.save();
+    ctx.translate(sx(p.x), sy(p.y));
+    ctx.rotate(-a);
+
+    ctx.fillStyle = 'rgba(217,243,245,0.07)';
+    ctx.fill(path);
+
+    // liquid: surface stays level with real gravity (screen horizontal)
+    ctx.save();
+    ctx.clip(path);
+    ctx.translate(0, -LIQ_Y * PX);
+    ctx.rotate(a + S.slosh);
+    const R = FLASK_H * PX * 2;
+    const grd = ctx.createLinearGradient(0, 0, 0, FLASK_H * PX);
+    grd.addColorStop(0, '#5cf2c8'); grd.addColorStop(1, '#13a383');
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.moveTo(-R, 0);
+    const tt = performance.now() / 260;
+    for (let x = -R; x <= R; x += 8) ctx.lineTo(x, Math.sin(x * 0.05 + tt) * (1.2 + Math.abs(S.sloshV) * 4));
+    ctx.lineTo(R, R); ctx.lineTo(-R, R); ctx.closePath(); ctx.fill();
+    ctx.restore();
+
+    // bubbles (inside liquid, local)
+    ctx.save(); ctx.clip(path);
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    const t2 = performance.now() / 1000;
+    for (let i = 0; i < 6; i++) {
+      const bx = Math.sin(i * 12.9) * 0.22 * PX;
+      const by = -((t2 * 0.25 + i * 0.07) % LIQ_Y) * PX;
+      ctx.beginPath(); ctx.arc(bx, by, 1.5 + (i % 3), 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#d9f3f5'; ctx.lineWidth = 2.5;
+    ctx.stroke(path);
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(-0.06 * PX, -1.28 * PX); ctx.lineTo(-0.06 * PX, -0.92 * PX);
+    ctx.moveTo(-0.2 * PX, -0.6 * PX); ctx.lineTo(-0.3 * PX, -0.22 * PX);
+    ctx.stroke();
+    // graduations (mL)
+    ctx.strokeStyle = 'rgba(217,243,245,0.55)'; ctx.lineWidth = 1.2;
+    ctx.fillStyle = 'rgba(217,243,245,0.65)';
+    ctx.font = `${Math.max(8, PX * 0.075)}px "M PLUS 1 Code", monospace`;
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    for (const [y, label] of [[0.15, '200'], [0.32, '150'], [0.5, '100']]) {
+      const hx = (halfAt(y) - 0.06) * PX;
+      ctx.beginPath(); ctx.moveTo(hx - 8, -y * PX); ctx.lineTo(hx, -y * PX); ctx.stroke();
+      ctx.fillText(label, hx - 11, -y * PX);
+    }
+    ctx.restore();
+  }
+
+  function stepFx(dt) {
+    S.shake *= Math.pow(0.02, dt);
+    const wAbs = Math.abs(S.wind);
+    if (S.phase === 'play' && wAbs > 0.05 && Math.random() < wAbs * dt * 40) {
+      const dir = Math.sign(S.wind);
+      S.streaks.push({ x: dir > 0 ? -80 : W + 80, y: Math.random() * GROUND_PX * 0.95, len: 40 + Math.random() * 110,
+        v: dir * (700 + Math.random() * 500), a: 0.2 + Math.random() * 0.35 });
+    }
+    for (const s of S.streaks) s.x += s.v * dt;
+    S.streaks = S.streaks.filter(s => s.x > -300 && s.x < W + 300);
+    setWindSound(S.phase === 'play' ? Math.min(wAbs / 0.8, 1) : 0);
+  }
+
+  function updateHud() {
+    if (S.phase === 'play') timeEl.innerHTML = S.t.toFixed(2) + '<small>秒</small>';
+    if (tray) tiltM.textContent = (Math.abs(tray.getAngle()) * 180 / Math.PI).toFixed(1) + '°' + (tray.getAngle() < -0.005 ? ' ↘' : tray.getAngle() > 0.005 ? ' ↙' : '');
+    const ms = Math.abs(S.wind) * 14;
+    windM.textContent = ms.toFixed(1) + ' m/s' + (S.wind > 0.01 ? ' →' : S.wind < -0.01 ? ' ←' : '');
+    windRow.className = ms > 1 ? 'gust' : '';
+  }
+
+  // ---------- loop ----------
+  let last = performance.now(), acc = 0;
+  function frame(now) {
+    const dt = Math.min((now - last) / 1000, 0.1);
+    last = now;
+    if (world) {
+      acc += dt;
+      let n = 0;
+      while (acc >= DT && n < 24) { physicsStep(); acc -= DT; n++; }
+      if (n >= 24) acc = 0;
+    }
+    stepFx(dt);
+    updateHud();
+    draw();
+    requestAnimationFrame(frame);
+  }
+  reset();
+  requestAnimationFrame(frame);
+
+  // ---------- flow ----------
+  async function start() {
+    initAudio();
+    if (ac && ac.state === 'suspended') ac.resume();
+    if (!gyroOK) {
+      const ok = await enableGyro();
+      if (!ok) $('startNote').textContent = '傾きセンサーが使えないので、画面を左右にドラッグ（PCは ← →）で操作します。';
+    }
+    reset();
+    startModal.hidden = true; overModal.hidden = true;
+    S.phase = 'play';
+    setTimeout(() => {
+      if (!gyroSeen && S.phase === 'play') {
+        ctlHint.textContent = '画面を左右にドラッグ / ← → キーでトレーを傾ける';
+        ctlHint.hidden = false;
+      }
+    }, 900);
+  }
+
+  const MSGS = [
+    [3, 'まだ温めてもいない。'],
+    [8, '試験管立てを使いましょう。'],
+    [15, 'まずまずの手さばき。'],
+    [25, '実験助手として採用。'],
+    [40, '研究室のエース。'],
+    [60, '風の中の化学者。'],
+    [Infinity, '人間ジャイロスコープ。'],
+  ];
+  function showOver(t, isBest, cause) {
+    $('overTitle').textContent = cause === 'drop' ? '落下！ガシャーン！' : '転倒！ガシャーン！';
+    $('finalTime').innerHTML = t.toFixed(2) + '<small>秒</small>';
+    const m = MSGS.find(([lim]) => t < lim)[1];
+    $('finalMsg').textContent = (isBest ? '自己ベスト更新！ ' : '') + m;
+    overModal.hidden = false;
+    S.lastScore = t;
+  }
+
+  $('startBtn').addEventListener('click', start);
+  $('retryBtn').addEventListener('click', start);
+  $('shareBtn').addEventListener('click', () => {
+    const t = (S.lastScore || 0).toFixed(2);
+    const how = S.cause === 'drop' ? '落として' : '倒して';
+    const text = `フラスコを ${t} 秒守ったけど${how}割った🧪💥\n#フラスコバランス`;
+    const url = location.href.split('#')[0];
+    const intent = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(text) +
+      (url.startsWith('http') ? '&url=' + encodeURIComponent(url) : '');
+    const w = window.open(intent, '_blank');
+    if (w) { try { w.opener = null; } catch (e) {} } else location.href = intent;
+  });
+
+  function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+})();
+</script>
+</body>
+</html>
