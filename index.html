@@ -189,7 +189,7 @@
   const MAX_TILT = 0.6;         // ±34°
   const MAX_TILT_SPEED = 2.6;   // rad/s, how fast the tray can follow the phone
   const FLASK_H = 1.4;          // 14 cm Erlenmeyer flask
-  const MU_GLASS = 0.55;
+  const MU_GLASS = 0.35;        // slides once the tray passes ~19°
 
   // flask outline in local coords (dm, y up). Origin = base center.
   const BASE = 0.4, SHOULDER_Y = 0.8, NECK = 0.13, LIQ_Y = 0.45;
@@ -399,7 +399,7 @@
   }
 
   function updateWind() {
-    const lvl = Math.min(S.t / 70, 1);
+    const lvl = Math.min(S.t / 120, 1);   // gentle ramp over two minutes
     if (!S.warned && S.windDir === 0 && S.t >= S.nextGust - 1.0) {
       S.warned = true;
       S.pendingDir = Math.random() < 0.5 ? -1 : 1;
@@ -408,22 +408,23 @@
     }
     if (S.windDir === 0 && S.t >= S.nextGust) {
       S.windDir = S.pendingDir;
-      S.gustEnd = S.t + 1.5 + Math.random() * (1.2 + 2 * lvl);
+      S.gustEnd = S.t + 1.6 + Math.random() * (1.2 + 1.0 * lvl);
       // fraction of the flask's weight pushed sideways
-      S.windStrength = 0.32 + 0.55 * lvl + Math.random() * 0.15;
+      S.windStrength = 0.4 + 0.3 * lvl + Math.random() * 0.08;
       windAlert.hidden = true;
     }
     let target = 0;
     if (S.windDir !== 0) {
       if (S.t < S.gustEnd) {
-        const pulse = 0.78 + 0.22 * Math.sin(S.t * 7.3) + 0.12 * Math.sin(S.t * 19.1);
+        const pulse = 0.86 + 0.1 * Math.sin(S.t * 7.3) + 0.05 * Math.sin(S.t * 19.1);
         target = S.windDir * S.windStrength * pulse;
       } else {
         S.windDir = 0; S.warned = false;
-        S.nextGust = S.t + 2.5 + Math.random() * (5.5 - 2.5 * lvl);
+        S.nextGust = S.t + 3 + Math.random() * (5 - 1.5 * lvl);
       }
     }
-    S.wind += (target - S.wind) * (1 - Math.pow(0.004, DT));
+    // gusts build up over ~0.5 s instead of hitting instantly
+    S.wind += (target - S.wind) * (1 - Math.pow(0.1, DT));
     if (Math.abs(S.wind) < 0.002 && target === 0) S.wind = 0;
   }
 
